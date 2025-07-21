@@ -34,17 +34,12 @@ public class SimplifiedKafkaProducerInTransactionTest extends CamelTestSupport {
 	
 	private MockProducer<String, String> loopMockProducer = new MockProducer<>(true, new StringSerializer(), new StringSerializer());
 	private MockProducer<String, String> splitMockProducer = new MockProducer<>(true, new StringSerializer(), new StringSerializer());// {
-//		public void beginTransaction() throws org.apache.kafka.common.errors.ProducerFencedException {
-//			super.beginTransaction();
-//		};
-//	};
 	
 	@Override
 	protected CamelContext createCamelContext() throws Exception {
 		CamelContext context = super.createCamelContext();
 		
 		KafkaClientFactory kcf = Mockito.mock(KafkaClientFactory.class);
-//		Mockito.when(kcf.getProducer(any(Properties.class))).thenReturn(mockProducer);
 		Mockito.when(kcf.getProducer(any(Properties.class))).thenAnswer(invocation -> {
 			Properties kafkaProps = invocation.getArgument(0);
 			Object transactionalId = kafkaProps.get("transactional.id");
@@ -59,12 +54,17 @@ public class SimplifiedKafkaProducerInTransactionTest extends CamelTestSupport {
         kafka.getConfiguration().setBrokers("broker1:1234,broker2:4567");
         kafka.getConfiguration().setRecordMetadata(true);
         kafka.setKafkaClientFactory(kcf);
-//        kafka.init();
 
 		context.addComponent("kafka", kafka);
 		return context;
 	}
 	
+	/**
+	 * In a Loop EIP creates Avro messages and sends them with transactional.id to Kafka. 
+	 * The tests first shows that an IllegalStateException is caught in the route 
+	 * before static property "CheckIfTransactedBy" on an updated version of 
+	 * org.apache.camel.component.kafka.KafkaProducer.
+	 */
 	@Test
 	public void test01_HappyLoopPath() throws Exception {
 		System.out.print(new StringBuilder(System.lineSeparator()) //
@@ -76,26 +76,34 @@ public class SimplifiedKafkaProducerInTransactionTest extends CamelTestSupport {
 		int messageCount = 5;
 		int commitCount = 1;
 		
-		splitDoneEndpoint.expectedMessageCount(commitCount);
+		loopDoneEndpoint.expectedMessageCount(1);
 
-//		org.apache.camel.component.kafka.KafkaProducer.setCheckIfTransactedBy(true);
 		try {
 			template.sendBody("direct:loop", messageCount);			
 		} catch (CamelExecutionException e) {
 			exceptionCaught = e;
 		}
 		
-		if (null != exceptionCaught) {
-			assertInstanceOf(IllegalStateException.class, exceptionCaught.getCause());
-			assertEquals("Transaction already started", exceptionCaught.getCause().getMessage());
-			messageCount = 0;
-			commitCount = 0;
-		}
+		assertInstanceOf(IllegalStateException.class, exceptionCaught.getCause());
+		assertEquals("Transaction already started", exceptionCaught.getCause().getMessage());
+		assertEquals(0, loopMockProducer.history().size());
+		assertEquals(0, loopMockProducer.commitCount());
+
+		org.apache.camel.component.kafka.KafkaProducer.setCheckIfTransactedBy(true);
 		
+		template.sendBody("direct:loop", messageCount);
+
+		MockEndpoint.assertIsSatisfied(context);
+
 		assertEquals(messageCount, loopMockProducer.history().size());
 		assertEquals(commitCount, loopMockProducer.commitCount());
 	}
 
+	/**
+	 * In the same route as test01_HappyLoopPath will throw a RuntimeException 
+	 * to mark the mark exchange for RollbackOnly so no messages sent to Kafka are 
+	 * received by clients that are configured with ISOLATION_LEVEL 'read_committed'
+	 */
 	@Test
 	public void test02_OnExceptionWithLoop() throws Exception {
 		System.out.print(new StringBuilder(System.lineSeparator()) //
@@ -105,8 +113,9 @@ public class SimplifiedKafkaProducerInTransactionTest extends CamelTestSupport {
 
 		Exception exceptionCaught = null; 
 		int throwExeptionOnIndex = 4;
-
-//		org.apache.camel.component.kafka.KafkaProducer.setCheckIfTransactedBy(true);
+		boolean checkIfTransactedBy = false;
+		
+		org.apache.camel.component.kafka.KafkaProducer.setCheckIfTransactedBy(checkIfTransactedBy);
 		
 		try {
 			template.sendBodyAndHeader("direct:loop", throwExeptionOnIndex+1, "ThrowExeptionOnIndex", throwExeptionOnIndex);			
@@ -116,17 +125,23 @@ public class SimplifiedKafkaProducerInTransactionTest extends CamelTestSupport {
 
 		assertNotNull(exceptionCaught);
 		
-		if (exceptionCaught.getCause() instanceof IllegalStateException) {
-			assertEquals("Transaction already started", exceptionCaught.getCause().getMessage());
-		} else {
+		if (checkIfTransactedBy) {
 			assertInstanceOf(RuntimeException.class, exceptionCaught.getCause());
 			assertEquals(exceptionCaught.getCause().getMessage(), "Failing with Index: "+throwExeptionOnIndex);
+		} else {
+			assertInstanceOf(IllegalStateException.class, exceptionCaught.getCause());
+			assertEquals("Transaction already started", exceptionCaught.getCause().getMessage());
 		}
 		
 		assertEquals(0, loopMockProducer.history().size());
 		assertEquals(0, loopMockProducer.commitCount());
 	}
 	
+	/**
+	 * In a Split EIP creates Avro messages and sends them with transactional.id to Kafka. 
+	 * The test works fine however the log shows that every iteration of the split has an exchange 
+	 * with a new id and a new UOW even if it has been configured with ".shareUnitOfWork(true)". 
+	 */
 	@Test
 	public void test03_HappySplitPath() throws Exception {
 		System.out.print(new StringBuilder(System.lineSeparator()) //
@@ -145,7 +160,9 @@ public class SimplifiedKafkaProducerInTransactionTest extends CamelTestSupport {
 		}
 		
 		template.sendBody("direct:split", sb.toString());			
-		
+
+		MockEndpoint.assertIsSatisfied(context);
+
 		assertEquals(messageCount, splitMockProducer.history().size());
 		assertEquals(1, splitMockProducer.commitCount());
 	}
@@ -211,7 +228,15 @@ public class SimplifiedKafkaProducerInTransactionTest extends CamelTestSupport {
 						.choice().when(exchange -> {
 							Integer throwExeptionOnIndex = exchange.getVariable("ThrowExeptionOnIndex", Integer.class);
 							Integer camelSplitIndex = exchange.getProperty("CamelSplitIndex", Integer.class);
-							return (null != throwExeptionOnIndex && throwExeptionOnIndex == camelSplitIndex);
+
+							if (null != throwExeptionOnIndex && throwExeptionOnIndex == camelSplitIndex) {
+								return true;
+							} else {
+								System.out.printf("***** Sending message to Kafka Split exchange with id '%s' and UnitOfWork: %s%n",
+									exchange.getExchangeId(), exchange.getUnitOfWork().hashCode());
+
+								return false;
+							}
 						})
 							.throwException(RuntimeException.class, "Failing with Index: ${exchangeProperty.CamelSplitIndex}")
 						.otherwise()
