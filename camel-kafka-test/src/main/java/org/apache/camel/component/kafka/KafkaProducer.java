@@ -527,17 +527,17 @@ public class KafkaProducer extends DefaultAsyncProducer implements RouteIdAware 
         }
     }
 
-    private void startKafkaTransaction(Exchange exchange) {
-        UnitOfWork uow = exchange.getUnitOfWork();
+	private void startKafkaTransaction(Exchange exchange) {
+		UnitOfWork uow = exchange.getUnitOfWork();
 
-        if (checkIfTransactedBy && uow.isTransactedBy(transactionId)) {
-        	return;
-        }
-        
+		if (checkIfTransactedBy && uow.isTransactedBy(transactionId)) {
+			return;
+		}
+
 		uow.beginTransactedBy(transactionId);
-        kafkaProducer.beginTransaction();
-        uow.addSynchronization(new KafkaTransactionSynchronization(transactionId, kafkaProducer));
-    }
+		kafkaProducer.beginTransaction();
+		uow.addSynchronization(new KafkaTransactionSynchronization(transactionId, kafkaProducer));
+	}
 
     @Override
     public String getRouteId() {
@@ -547,10 +547,9 @@ public class KafkaProducer extends DefaultAsyncProducer implements RouteIdAware 
     @Override
     public void setRouteId(String routeId) {
         this.routeId = routeId;
-    }
-    
-    private static boolean checkIfTransactedBy = false;
+	}
 
+	private static boolean checkIfTransactedBy = false;
 	public static void setCheckIfTransactedBy(boolean checkIfTransactedBy) {
 		KafkaProducer.checkIfTransactedBy = checkIfTransactedBy;
 	}
