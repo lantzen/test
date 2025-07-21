@@ -332,7 +332,9 @@ public class KafkaProducerInTransactionTest extends CamelTestSupport {
 		Thread kafkaTestConsumerThread = new Thread(kafkaTestConsumer, "Kafka TestConsumer");
 
 		exceptionEndpoint.expectedMessageCount(1);
-		
+    	exceptionCaughtByRoute = null;
+		KafkaProducer.setCheckIfTransactedBy(true);
+
 		// Remove messages from old tests
 		kafkaTestConsumer.run();
 
@@ -346,6 +348,9 @@ public class KafkaProducerInTransactionTest extends CamelTestSupport {
 		
     	MockEndpoint.assertIsSatisfied(context);
 
+    	assertInstanceOf(RuntimeException.class, exceptionCaughtByRoute);
+    	assertEquals(exceptionCaughtByRoute.getMessage(), "Failing with camelLoopIndex: 1");
+    	
     	kafkaTestConsumerThread.join();
 
 		assertEquals(0, kafkaTestConsumer.getTotalMessage(), "Unspected total message count: "+kafkaTestConsumer.getTotalMessage());
