@@ -1,0 +1,1 @@
+{"type":"record","name":"TestMessage","namespace":"com.ziklo.infobus.camel.example.kafka","fields":[{"name":"test","type":["null","string"],"default":null}]}
