@@ -60,7 +60,7 @@ public class SimplifiedKafkaProducerInTransactionTest extends CamelTestSupport {
 	}
 	
 	/**
-	 * Loop EIP creates Avro messages and sends them with transactional.id to Kafka. 
+	 * In a Loop EIP creates Avro messages and sends them with transactional.id to Kafka. 
 	 * The tests first shows that an IllegalStateException is caught in the route 
 	 * before static property "CheckIfTransactedBy" on an updated version of 
 	 * org.apache.camel.component.kafka.KafkaProducer.
@@ -100,7 +100,9 @@ public class SimplifiedKafkaProducerInTransactionTest extends CamelTestSupport {
 	}
 
 	/**
-	 * 
+	 * In the same route as test01_HappyLoopPath will throw a RuntimeException 
+	 * to mark the mark exchange for RollbackOnly so no messages sent to Kafka are 
+	 * received by clients that are configured with ISOLATION_LEVEL 'read_committed'
 	 */
 	@Test
 	public void test02_OnExceptionWithLoop() throws Exception {
@@ -135,6 +137,11 @@ public class SimplifiedKafkaProducerInTransactionTest extends CamelTestSupport {
 		assertEquals(0, loopMockProducer.commitCount());
 	}
 	
+	/**
+	 * In a Split EIP creates Avro messages and sends them with transactional.id to Kafka. 
+	 * The test works fine however the log shows that every iteration of the split has an exchange 
+	 * with a new id and a new UOW even if it has been configured with ".shareUnitOfWork(true)". 
+	 */
 	@Test
 	public void test03_HappySplitPath() throws Exception {
 		System.out.print(new StringBuilder(System.lineSeparator()) //
@@ -221,7 +228,15 @@ public class SimplifiedKafkaProducerInTransactionTest extends CamelTestSupport {
 						.choice().when(exchange -> {
 							Integer throwExeptionOnIndex = exchange.getVariable("ThrowExeptionOnIndex", Integer.class);
 							Integer camelSplitIndex = exchange.getProperty("CamelSplitIndex", Integer.class);
-							return (null != throwExeptionOnIndex && throwExeptionOnIndex == camelSplitIndex);
+
+							if (null != throwExeptionOnIndex && throwExeptionOnIndex == camelSplitIndex) {
+								return true;
+							} else {
+								System.out.printf("***** Sending message to Kafka Split exchange with id '%s' and UnitOfWork: %s%n",
+									exchange.getExchangeId(), exchange.getUnitOfWork().hashCode());
+
+								return false;
+							}
 						})
 							.throwException(RuntimeException.class, "Failing with Index: ${exchangeProperty.CamelSplitIndex}")
 						.otherwise()
