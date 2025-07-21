@@ -340,11 +340,7 @@ public class KafkaProducerInTransactionTest extends CamelTestSupport {
 
 		kafkaTestConsumerThread.start();
 
-    	try {
-			template.sendBodyAndHeader("direct:loop", 2, "ThrowExeptionOnLoopIndex", 1);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		template.sendBodyAndHeader("direct:loop", 2, "ThrowExeptionOnLoopIndex", 1);
 		
     	MockEndpoint.assertIsSatisfied(context);
 
@@ -377,8 +373,8 @@ public class KafkaProducerInTransactionTest extends CamelTestSupport {
 
 		kafkaTestConsumerThread.start();
 
-//		doneEndpoint.expectedMessageCount(1);
-		exceptionEndpoint.expectedMessageCount(1);
+		doneEndpoint.expectedMessageCount(1);
+
     	exceptionCaughtByRoute = null;
 		KafkaProducer.setCheckIfTransactedBy(false);
 
@@ -386,18 +382,55 @@ public class KafkaProducerInTransactionTest extends CamelTestSupport {
     	
     	MockEndpoint.assertIsSatisfied(context, 10, TimeUnit.SECONDS);
     	
-//    	assertNull(exceptionCaughtByRoute);
-    	assertInstanceOf(CamelExchangeException.class, exceptionCaughtByRoute);
-    	assertInstanceOf(ProducerFencedException.class, exceptionCaughtByRoute.getCause());
-    	assertThat(exceptionCaughtByRoute.getMessage(), containsString("There is a newer producer with the same transactionalId which fences the current one"));
+    	assertNull(exceptionCaughtByRoute);
+//    	assertInstanceOf(CamelExchangeException.class, exceptionCaughtByRoute);
+//    	assertInstanceOf(ProducerFencedException.class, exceptionCaughtByRoute.getCause());
+//    	assertThat(exceptionCaughtByRoute.getMessage(), containsString("There is a newer producer with the same transactionalId which fences the current one"));
 
     	kafkaTestConsumerThread.join();
 
-//		assertEquals(messageCount, kafkaTestConsumer.getTotalMessage(), "Unspected total message count: "+kafkaTestConsumer.getTotalMessage());
-		assertEquals(0, kafkaTestConsumer.getTotalMessage(), "Unspected total message count: "+kafkaTestConsumer.getTotalMessage());
+		assertEquals(messageCount, kafkaTestConsumer.getTotalMessage(), "Unspected total message count: "+kafkaTestConsumer.getTotalMessage());
+//		assertEquals(0, kafkaTestConsumer.getTotalMessage(), "Unspected total message count: "+kafkaTestConsumer.getTotalMessage());
 
     }
 
+    @Test
+    public void test04_OnExceptionWithSplit() throws Exception {
+		System.out.print(new StringBuilder(System.lineSeparator()) //
+				.append("**********************************").append(System.lineSeparator()) //
+				.append("* Testing OnException with Split *").append(System.lineSeparator()) //
+				.append("**********************************").append(System.lineSeparator()));
+		
+		KafkaTestConsumer kafkaTestConsumer = new KafkaTestConsumer();
+		Thread kafkaTestConsumerThread = new Thread(kafkaTestConsumer, "Kafka TestConsumer");
+		StringBuilder sb = new StringBuilder();
+    	int messageCount = 2;
+    	
+    	for (int i = 0; i < messageCount; i++) {
+    		sb.append(String.format("test%02d\n", i+1));
+		}
+
+		exceptionEndpoint.expectedMessageCount(1);
+    	exceptionCaughtByRoute = null;
+		KafkaProducer.setCheckIfTransactedBy(true);
+
+		// Remove messages from old tests
+		kafkaTestConsumer.run();
+
+		kafkaTestConsumerThread.start();
+
+		template.sendBodyAndHeader("direct:split", sb.toString(), "ThrowExeptionOnSplitIndex", 1);
+		
+    	MockEndpoint.assertIsSatisfied(context);
+
+    	assertInstanceOf(CamelExchangeException.class, exceptionCaughtByRoute);
+    	assertInstanceOf(RuntimeException.class, exceptionCaughtByRoute.getCause());
+    	assertEquals(exceptionCaughtByRoute.getCause().getMessage(), "Failing with camelSplitIndex: 1");
+    	
+    	kafkaTestConsumerThread.join();
+
+		assertEquals(0, kafkaTestConsumer.getTotalMessage(), "Unspected total message count: "+kafkaTestConsumer.getTotalMessage());
+    }
 
 	@Override
 	protected CamelContext createCamelContext() throws Exception {
@@ -412,12 +445,15 @@ public class KafkaProducerInTransactionTest extends CamelTestSupport {
         return new RouteBuilder() {
 			@Override
             public void configure() throws Exception {
-        		String destinationUrl = "kafka:"+TOPIC
+        		String loopDestinationUrl = "kafka:"+TOPIC
         				+ "?keySerializer=org.apache.kafka.common.serialization.StringSerializer"
         				+ "&valueSerializer=io.confluent.kafka.serializers.KafkaAvroSerializer"
-        				+ "&additional-properties[transactional.id]=1234&additional-properties[enable.idempotence]=true&additional-properties[retries]=5"
         				+ schemaRegistryConfig;
+        		String splitDestinationUrl = loopDestinationUrl
+        				+ "&additional-properties[transactional.id]=1234&additional-properties[enable.idempotence]=true&additional-properties[retries]=5";
 
+        		loopDestinationUrl += "&additional-properties[transactional.id]=5678&additional-properties[enable.idempotence]=true&additional-properties[retries]=5";
+        		
         		from("direct:loop")
 					.id(KafkaProducerInTransactionTest.class.getName()+"-00_test_loop")
 					.setVariable("MessageCount", body().convertTo(Integer.class))
@@ -442,7 +478,7 @@ public class KafkaProducerInTransactionTest extends CamelTestSupport {
 		
 				        		return new TestMessage(String.format("test", camelLoopIndex+1)); 
 							})
-				        	.to(destinationUrl)
+				        	.to(loopDestinationUrl)
 						.end() // .loop
 					.endDoTry()
 					.doCatch(Throwable.class)
@@ -468,14 +504,14 @@ public class KafkaProducerInTransactionTest extends CamelTestSupport {
 								
 								if (null != throwExeptionOnSplitIndex && throwExeptionOnSplitIndex == camelSplitIndex) {
 									System.err.println("Failing with exception at camelLoopIndex: "+camelSplitIndex);
-									throw new RuntimeException("Failing with camelLoopIndex: "+camelSplitIndex);
+									throw new RuntimeException("Failing with camelSplitIndex: "+camelSplitIndex);
 								}
 								
 								System.out.printf("***** Creating TestMessage in Split exchange with id '%s' and UnitOfWork: %s%n", exchange.getExchangeId(), uow.hashCode());
 
 				        		return new TestMessage(String.format("test%02d - %s", camelSplitIndex+1, body)); 
 							})
-				        	.to(destinationUrl)
+				        	.to(splitDestinationUrl)
 						.end() // .split rows
 					.endDoTry()
 					.doCatch(Throwable.class)
