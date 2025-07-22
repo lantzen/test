@@ -27,10 +27,13 @@
 <!- - >
 -->
 		<camel.version>4.13.0</camel.version>
+<!--
         <avro.version>1.12.0</avro.version>
-        <kafka.version>3.9.1</kafka.version>
+-->        <kafka.version>3.9.1</kafka.version>
+<!--
+        
         <confluent.version>7.9.2</confluent.version>
-
+-->
 		<hamcrest.version>2.2</hamcrest.version>
 	</properties>
 
@@ -83,11 +86,13 @@
 		  <version>${kafka.version}</version>
 		</dependency>
 -->		
+<!--
 		<dependency>
 		    <groupId>io.confluent</groupId>
 		    <artifactId>kafka-avro-serializer</artifactId>
 		    <version>${confluent.version}</version>
 		</dependency>
+-->		
 
 <!--
 		<dependency>
@@ -143,6 +148,14 @@
 			<version>${derby-version}</version>
 			<scope>test</scope>
 		</dependency>
+
+	 	<dependency>
+	       <groupId>org.springframework.kafka</groupId>
+	       <artifactId>spring-kafka-test</artifactId>
+	       <version>3.3.7</version>
+	       <scope>test</scope>
+	       
+	   </dependency>
 -->
 	</dependencies>
 
@@ -177,7 +190,7 @@
 					<mainClass>se.replyto.test.camel-loop.MainApp</mainClass>
 				</configuration>
 			</plugin>
-			
+<!--			
 			<plugin>
 				<groupId>org.apache.avro</groupId>
 				<artifactId>avro-maven-plugin</artifactId>
@@ -194,6 +207,7 @@
 					</execution>
 				</executions>
 			</plugin>
+-->		
 		</plugins>
 	</build>
 
