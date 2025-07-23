@@ -71,8 +71,8 @@
 		</Logger>
 -->
 
-		<Logger name="org.apache.camel.component.kafka" level="trace">
-			<AppenderRef ref="rollingFile_trace2" level="trace" />
+		<Logger name="org.apache.camel.component.kafka" level="debug">
+			<AppenderRef ref="rollingFile_trace2" level="debug" />
 		</Logger>
 		<Logger name="org.apache.kafka.clients.producer" level="trace">
 			<AppenderRef ref="rollingFile_trace2" level="trace" />

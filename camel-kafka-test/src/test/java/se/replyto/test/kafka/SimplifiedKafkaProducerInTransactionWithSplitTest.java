@@ -2,7 +2,6 @@ package se.replyto.test.kafka;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 
 import java.util.Properties;
@@ -63,7 +62,6 @@ public class SimplifiedKafkaProducerInTransactionWithSplitTest extends CamelTest
 		StringBuilder sb = new StringBuilder();
 		int messageCount = 5;
 	
-		
 		doneEndpoint.expectedMessageCount(1);
 	
 		for (int i = 0; i < messageCount; i++) {

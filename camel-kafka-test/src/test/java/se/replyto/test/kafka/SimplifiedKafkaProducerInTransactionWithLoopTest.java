@@ -60,31 +60,14 @@ public class SimplifiedKafkaProducerInTransactionWithLoopTest extends CamelTestS
 				.append("* Testing HappyPath with Loop *").append(System.lineSeparator()) //
 				.append("*******************************").append(System.lineSeparator()));
 		
-		Exception exceptionCaught = null; 
 		int messageCount = 5;
-		int commitCount = 1;
-		
-		doneEndpoint.expectedMessageCount(1);
-
-		try {
-			template.sendBody("direct:split", messageCount);			
-		} catch (CamelExecutionException e) {
-			exceptionCaught = e;
-		}
-		
-		assertInstanceOf(IllegalStateException.class, exceptionCaught.getCause());
-		assertEquals("Transaction already started", exceptionCaught.getCause().getMessage());
-		assertEquals(0, mockProducer.history().size());
-		assertEquals(0, mockProducer.commitCount());
-
-		org.apache.camel.component.kafka.KafkaProducer.setCheckIfTransactedBy(true);
 		
 		template.sendBody("direct:loop", messageCount);
 
 		MockEndpoint.assertIsSatisfied(context);
 
 		assertEquals(messageCount, mockProducer.history().size());
-		assertEquals(commitCount, mockProducer.commitCount());
+		assertEquals(1, mockProducer.commitCount());
 	}
 
 	/**
@@ -101,25 +84,16 @@ public class SimplifiedKafkaProducerInTransactionWithLoopTest extends CamelTestS
 
 		Exception exceptionCaught = null; 
 		int throwExeptionOnIndex = 4;
-		boolean checkIfTransactedBy = false;
-		
-		org.apache.camel.component.kafka.KafkaProducer.setCheckIfTransactedBy(checkIfTransactedBy);
-		
 		try {
-			template.sendBodyAndHeader("direct:split", throwExeptionOnIndex+1, "ThrowExeptionOnIndex", throwExeptionOnIndex);			
+			template.sendBodyAndHeader("direct:loop", throwExeptionOnIndex+1, "ThrowExeptionOnIndex", throwExeptionOnIndex);			
 		} catch (CamelExecutionException e) {
 			exceptionCaught = e;
 		}
 
 		assertNotNull(exceptionCaught);
 		
-		if (checkIfTransactedBy) {
-			assertInstanceOf(RuntimeException.class, exceptionCaught.getCause());
-			assertEquals(exceptionCaught.getCause().getMessage(), "Failing with Index: "+throwExeptionOnIndex);
-		} else {
-			assertInstanceOf(IllegalStateException.class, exceptionCaught.getCause());
-			assertEquals("Transaction already started", exceptionCaught.getCause().getMessage());
-		}
+		assertInstanceOf(RuntimeException.class, exceptionCaught.getCause());
+		assertEquals(exceptionCaught.getCause().getMessage(), "Failing with Index: "+throwExeptionOnIndex);
 		
 		assertEquals(0, mockProducer.history().size());
 		assertEquals(0, mockProducer.commitCount());
