@@ -106,11 +106,12 @@ public class MultipleKafkaProducerInTransactionTest extends CamelTestSupport {
 		
 		doneEndpoint.setExpectedCount(1);
 
-		template.sendBodyAndHeader("direct:start", "topic1:test31;", "UseSingleKafkaProcucer", true);
+		template.sendBodyAndHeader("direct:start", "topic1:test31;topic2", "UseSingleKafkaProcucer", true);
 
 		MockEndpoint.assertIsSatisfied(context);
 
 		assertEquals(0, mockProducer.history().size());
+		assertEquals(0, mockProducer.commitCount());
 	}
 
 	@Override
@@ -120,6 +121,9 @@ public class MultipleKafkaProducerInTransactionTest extends CamelTestSupport {
 			@Override
 			public void configure() throws Exception {
 				from("direct:start")
+	    			.onCompletion()
+		        		.to("mock:done")
+		        	.end() // .onCompletion()
 					.doTry()
 						.choice()
 							.when(header("UseSingleKafkaProcucer"))
@@ -128,9 +132,16 @@ public class MultipleKafkaProducerInTransactionTest extends CamelTestSupport {
 										Message message = exchange.getMessage();
 										String body = message.getBody(String.class);
 										String[] split = body.split(":");
+										String topic = split[0];
 										
 										message.removeHeaders(".*");
-										message.setHeader(KafkaConstants.OVERRIDE_TOPIC, split[0]);
+										message.setHeader(KafkaConstants.OVERRIDE_TOPIC, topic);
+
+										body = split[1];
+										if (body.isBlank()) {
+											throw new RuntimeException("Empty body not allowed!");
+										}
+										
 										return split[1];
 									})
 									.toD("kafka:topic?additional-properties[transactional.id]=1234&additional-properties[enable.idempotence]=true&additional-properties[retries]=5")
@@ -138,9 +149,9 @@ public class MultipleKafkaProducerInTransactionTest extends CamelTestSupport {
 							.endChoice()
 							.otherwise()
 								.setBody(constant("test1"))
-								.toD("kafka:topic1?additional-properties[transactional.id]=1234&additional-properties[enable.idempotence]=true&additional-properties[retries]=5")
-								.setBody(constant("test2"))
-								.toD("kafka:topic2?additional-properties[transactional.id]=1234&additional-properties[enable.idempotence]=true&additional-properties[retries]=5")
+//								.toD("kafka:topic1?additional-properties[transactional.id]=1234&additional-properties[enable.idempotence]=true&additional-properties[retries]=5")
+//								.setBody(constant("test2"))
+//								.toD("kafka:topic2?additional-properties[transactional.id]=1234&additional-properties[enable.idempotence]=true&additional-properties[retries]=5")
 						.end() // .choice()
 					.endDoTry()
 					.doCatch(Throwable.class)
@@ -150,7 +161,7 @@ public class MultipleKafkaProducerInTransactionTest extends CamelTestSupport {
 						})
 						.markRollbackOnly()
 					.end() // .doTry()
-					.to("mock:done");
+					;
 
 			}
 		};
