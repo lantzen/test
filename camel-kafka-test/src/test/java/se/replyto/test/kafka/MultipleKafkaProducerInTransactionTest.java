@@ -142,7 +142,7 @@ public class MultipleKafkaProducerInTransactionTest extends CamelTestSupport {
 											throw new RuntimeException("Empty body not allowed!");
 										}
 										
-										return split[1];
+										return body;
 									})
 									.toD("kafka:topic?additional-properties[transactional.id]=1234&additional-properties[enable.idempotence]=true&additional-properties[retries]=5")
 								.end() // .split
