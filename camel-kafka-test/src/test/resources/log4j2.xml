@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration strict="true" status="INFO">
+
+	<Appenders>
+		<Console name="STDOUT" target="SYSTEM_OUT">
+			<PatternLayout pattern="%d %-5p %c (%F:%L) - %m%n" />
+		</Console>
+	
+		<RollingFile name="rollingFile_warn"
+			fileName="logs/warn.log"
+			filePattern="logs/warn/warn_%d{dd-MMM}-%i.log.gz"
+			ignoreExceptions="false">
+			<PatternLayout>
+				<Pattern>%d %p %c{1.} [%t] %m %ex%n</Pattern>
+			</PatternLayout>
+			<Policies>
+				<OnStartupTriggeringPolicy />
+				<SizeBasedTriggeringPolicy size="10 MB" />
+				<TimeBasedTriggeringPolicy />
+			</Policies>
+			<DefaultRolloverStrategy max="30" />
+		</RollingFile>
+		
+		<RollingFile name="rollingFile_trace"
+			fileName="logs/trace.log"
+			filePattern="logs/trace/trace_%d{dd-MMM}-%i.log.gz"
+			ignoreExceptions="false">
+			<PatternLayout>
+				<Pattern>%d %p %c{1.} [%t] %m %ex%n</Pattern>
+			</PatternLayout>
+			<Policies>
+				<OnStartupTriggeringPolicy />
+				<SizeBasedTriggeringPolicy size="10 MB" />
+				<TimeBasedTriggeringPolicy />
+			</Policies>
+			<DefaultRolloverStrategy max="30" />
+		</RollingFile>
+		
+		<RollingFile name="rollingFile_trace2"
+			fileName="logs/trace2.log"
+			filePattern="logs/trace2/trace2_%d{dd-MMM}-%i.log.gz"
+			ignoreExceptions="false">
+			<PatternLayout>
+				<Pattern>%d %p %c{1.} [%t] %m %ex%n</Pattern>
+			</PatternLayout>
+			<Policies>
+				<SizeBasedTriggeringPolicy size="10 MB" />
+			</Policies>
+			<DefaultRolloverStrategy max="10" />
+		</RollingFile>	
+<!-- -->
+		</Appenders>
+	
+	<Loggers>
+		<Logger name="com.ziklo.infobus" level="trace" />
+		<Logger name="camel" level="trace" />
+<!-- 
+        <Logger name="org.apache.camel.component.file.remote.SftpOperations" level="trace" />
+        <Logger name="org.apache.camel.component.file.remote.RemoteFileProducer" level="trace" />
+        <Logger name="org.apache.camel.component.file.remote.RemoteFileConsumer" level="trace" />
+        <Logger name="org.apache.camel.component.file.remote.SftpEndpoint" level="trace" />
+
+		<Logger name="org.springframework.jms" level="trace" />
+		<Logger name="org.apache.camel.component.jms" level="trace" />
+
+		<Logger name="org.apache.camel.component.kafka" level="trace">
+			<AppenderRef ref="rollingFile_trace2" level="trace" />
+		</Logger>
+		<Logger name="org.apache.kafka.clients" level="trace">
+			<AppenderRef ref="rollingFile_trace2" level="trace" />
+		</Logger>
+-->
+
+		<Logger name="org.apache.camel.component.kafka" level="debug">
+			<AppenderRef ref="rollingFile_trace2" level="debug" />
+		</Logger>
+		<Logger name="org.apache.kafka.clients.producer" level="trace">
+			<AppenderRef ref="rollingFile_trace2" level="trace" />
+		</Logger>
+		
+		<Root level="info">
+ 			<AppenderRef ref="STDOUT" level="info" />
+<!-- Include this to get file based logging
+ -->
+			<AppenderRef ref="rollingFile_warn" level="warn" />
+			<AppenderRef ref="rollingFile_trace" level="trace" />
+		</Root>
+	</Loggers>
+
+</Configuration>
