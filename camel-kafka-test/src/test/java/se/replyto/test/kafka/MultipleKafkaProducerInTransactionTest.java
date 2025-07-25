@@ -52,6 +52,23 @@ public class MultipleKafkaProducerInTransactionTest extends CamelTestSupport {
 		return context;
 	}
 	
+	private void testHappyPath(String body, boolean useSingleKafkaProcucer) throws InterruptedException {
+		doneEndpoint.setExpectedCount(1);
+	
+		template.sendBodyAndHeader("direct:start", body, "UseSingleKafkaProcucer", useSingleKafkaProcucer);
+	
+		MockEndpoint.assertIsSatisfied(context);
+	
+		assertEquals(2, mockProducer.history().size());
+		ProducerRecord<String, String> record1 = mockProducer.history().get(0);
+		assertEquals("topic1", record1.topic());
+		assertEquals("test1", record1.value());
+		ProducerRecord<String, String> record2 = mockProducer.history().get(1);
+		assertEquals("topic2", record2.topic());
+		assertEquals("test2", record2.value());
+		assertEquals(1, mockProducer.commitCount());
+	}
+
 	@Test
 	public void test01_HappyPath() throws Exception {
 		System.out.print(new StringBuilder(System.lineSeparator()) //
@@ -77,26 +94,26 @@ public class MultipleKafkaProducerInTransactionTest extends CamelTestSupport {
 				.append("* Testing HappyPath with single KafkaProcucer *").append(System.lineSeparator()) //
 				.append("***********************************************").append(System.lineSeparator()));
 		
-		testHappyPath("topic1:test1;topic2:test2", true);
+		testHappyPath("topic1:test21;topic2:test22", true);
 	}
 
-	private void testHappyPath(String body, boolean useSingleKafkaProcucer) throws InterruptedException {
+	@Test
+	public void test03_OnExceptionWithSingleKafkaProcucer() throws Exception {
+		System.out.print(new StringBuilder(System.lineSeparator()) //
+				.append("*************************************************").append(System.lineSeparator()) //
+				.append("* Testing OnException with single KafkaProcucer *").append(System.lineSeparator()) //
+				.append("*************************************************").append(System.lineSeparator()));
+		
 		doneEndpoint.setExpectedCount(1);
 
-		template.sendBodyAndHeader("direct:start", body, "UseSingleKafkaProcucer", useSingleKafkaProcucer);
+		template.sendBodyAndHeader("direct:start", "topic1:test31;topic2", "UseSingleKafkaProcucer", true);
 
 		MockEndpoint.assertIsSatisfied(context);
 
-		assertEquals(2, mockProducer.history().size());
-		ProducerRecord<String, String> record1 = mockProducer.history().get(0);
-		assertEquals("topic1", record1.topic());
-		assertEquals("test1", record1.value());
-		ProducerRecord<String, String> record2 = mockProducer.history().get(1);
-		assertEquals("topic2", record2.topic());
-		assertEquals("test2", record2.value());
-		assertEquals(1, mockProducer.commitCount());
+		assertEquals(0, mockProducer.history().size());
+		assertEquals(0, mockProducer.commitCount());
 	}
-	
+
 	@Override
 	protected RoutesBuilder createRouteBuilder() throws Exception {
 				
@@ -104,6 +121,9 @@ public class MultipleKafkaProducerInTransactionTest extends CamelTestSupport {
 			@Override
 			public void configure() throws Exception {
 				from("direct:start")
+	    			.onCompletion()
+		        		.to("mock:done")
+		        	.end() // .onCompletion()
 					.doTry()
 						.choice()
 							.when(header("UseSingleKafkaProcucer"))
@@ -112,9 +132,16 @@ public class MultipleKafkaProducerInTransactionTest extends CamelTestSupport {
 										Message message = exchange.getMessage();
 										String body = message.getBody(String.class);
 										String[] split = body.split(":");
+										String topic = split[0];
 										
 										message.removeHeaders(".*");
-										message.setHeader(KafkaConstants.OVERRIDE_TOPIC, split[0]);
+										message.setHeader(KafkaConstants.OVERRIDE_TOPIC, topic);
+
+										body = split[1];
+										if (body.isBlank()) {
+											throw new RuntimeException("Empty body not allowed!");
+										}
+										
 										return split[1];
 									})
 									.toD("kafka:topic?additional-properties[transactional.id]=1234&additional-properties[enable.idempotence]=true&additional-properties[retries]=5")
@@ -122,9 +149,9 @@ public class MultipleKafkaProducerInTransactionTest extends CamelTestSupport {
 							.endChoice()
 							.otherwise()
 								.setBody(constant("test1"))
-								.toD("kafka:topic1?additional-properties[transactional.id]=1234&additional-properties[enable.idempotence]=true&additional-properties[retries]=5")
-								.setBody(constant("test2"))
-								.toD("kafka:topic2?additional-properties[transactional.id]=1234&additional-properties[enable.idempotence]=true&additional-properties[retries]=5")
+//								.toD("kafka:topic1?additional-properties[transactional.id]=1234&additional-properties[enable.idempotence]=true&additional-properties[retries]=5")
+//								.setBody(constant("test2"))
+//								.toD("kafka:topic2?additional-properties[transactional.id]=1234&additional-properties[enable.idempotence]=true&additional-properties[retries]=5")
 						.end() // .choice()
 					.endDoTry()
 					.doCatch(Throwable.class)
@@ -134,7 +161,7 @@ public class MultipleKafkaProducerInTransactionTest extends CamelTestSupport {
 						})
 						.markRollbackOnly()
 					.end() // .doTry()
-					.to("mock:done");
+					;
 
 			}
 		};
